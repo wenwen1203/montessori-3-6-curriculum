@@ -2395,7 +2395,8 @@
     <p style="margin-top:8px;font-size:12px;color:var(--ink-faint);">发展标准参考自 <b>UK Development Matters 2023</b>（英国早期基础阶段非法定指导），结合蒙特梭利敏感期理论。</p>
   </div>
 
-  <button class="print-btn" onclick="printAgePerspective()">🖨 打印全部年龄清单</button>
+  <button class="print-btn" id="shareAgeBtn" onclick="shareAgeList()">📤 分享本龄段清单卡</button>
+  <button class="print-btn" id="printAllBtn" onclick="printAgePerspective()">🖨 打印全部年龄清单（电脑端）</button>
 
   <div class="age-nav" id="ageNav">
     <button class="age-nav-btn active" data-age="2.5">2.5岁</button>
@@ -6693,11 +6694,68 @@ function resetNativeShare() {
   shareNative.textContent = '📤 直接分享';
   nativeCache = { key: null, files: [] };
 }
-if (shareNative && nativeShareSupported()) shareNative.style.display = '';
+// 微信内置浏览器不支持 Web Share API，但长按网页图片自带「发送给朋友」菜单——走专属路径
+const IS_WECHAT = /MicroMessenger/i.test(navigator.userAgent);
+if (shareNative && (nativeShareSupported() || IS_WECHAT)) shareNative.style.display = '';
+
+// 微信内 window.print() 无效，隐藏打印按钮避免"按了没反应"
+if (IS_WECHAT) {
+  const pb = document.getElementById('printAllBtn');
+  if (pb) pb.style.display = 'none';
+}
+
+// 年龄视角：把当前龄段的6张卡生成分享卡片
+function buildAgePosterPages() {
+  const sec = document.querySelector('.age-section.active');
+  const navBtn = document.querySelector('.age-nav-btn.active');
+  const ageLabel = navBtn ? navBtn.textContent.trim() : '';
+  if (!sec) return [];
+  const cards = sec.querySelectorAll('.age-grid .age-card');
+  const pages = [];
+  cards.forEach(card => {
+    const h3 = card.querySelector('h3');
+    const title = h3 ? h3.childNodes[0].textContent.trim() : '';
+    const sub = card.querySelector('.card-subtitle');
+    const lis = Array.from(card.querySelectorAll('li'));
+    pages.push(`<div class="poster-domain" style="background:#1a4d3a">年龄视角 · ${escapeHtml(ageLabel)}</div>
+      <div class="poster-title" style="font-size:26px;">${escapeHtml(title)}</div>
+      ${sub ? `<div class="poster-en">${escapeHtml(sub.textContent)}</div>` : ''}
+      <ul class="poster-list" style="margin-top:10px;">${lis.map(li => `<li>${li.innerHTML}</li>`).join('')}</ul>`);
+  });
+  return pages.map((b, i) => posterShell('#1a4d3a', 'Age Guide · ' + ageLabel + ' 家长清单', i + 1, pages.length, b));
+}
+function shareAgeList() {
+  const pages = buildAgePosterPages();
+  if (!pages.length) return;
+  const navBtn = document.querySelector('.age-nav-btn.active');
+  openSharePoster(pages, (navBtn ? navBtn.textContent.trim() : '') + '清单');
+}
 
 if (shareNative) shareNative.addEventListener('click', async () => {
   if (typeof html2canvas === 'undefined') {
     alert('图片生成组件尚未加载（需要联网一次）。请联网后刷新页面重试。');
+    return;
+  }
+  // 微信内：生成成品图铺在预览区，长按即可「发送给朋友」或保存后发朋友圈
+  if (!nativeShareSupported()) {
+    const posters = sharePreview.querySelectorAll('.poster');
+    if (!posters.length) return;
+    shareNative.disabled = true;
+    try {
+      const urls = [];
+      for (let i = 0; i < posters.length; i++) {
+        shareNative.textContent = `生成中… ${i + 1}/${posters.length}`;
+        const canvas = await capturePosterCanvas(posters[i]);
+        urls.push(canvas.toDataURL('image/png'));
+      }
+      sharePreview.innerHTML = urls.map((u, i) => `<img src="${u}" alt="卡片 ${i + 1}" style="width:100%;max-width:340px;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,0.12);">`).join('');
+      shareNative.textContent = '👆 长按图片 → 发送给朋友';
+      shareDownload.textContent = '👆 长按图片 → 保存（发朋友圈用）';
+    } catch (err) {
+      alert('生成失败：' + err.message + '。可直接对预览截图分享。');
+      shareNative.textContent = '📤 直接分享';
+    }
+    shareNative.disabled = false;
     return;
   }
   try {
