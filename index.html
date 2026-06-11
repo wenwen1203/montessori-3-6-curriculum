@@ -6575,7 +6575,11 @@ function openSharePoster(pages, name) {
   sharePreview.innerHTML = pages.join('');
   shareDownload.disabled = false;
   shareDownload.textContent = pages.length > 1 ? `⬇ 下载全部 ${pages.length} 张` : '⬇ 下载图片';
-  if (typeof resetNativeShare === 'function') resetNativeShare();
+  if (typeof resetNativeShare === 'function') {
+    resetNativeShare();
+    const nb = document.getElementById('shareNative');
+    if (nb) nb.textContent = pages.length > 1 ? `📤 直接分享 ${pages.length} 张` : '📤 直接分享';
+  }
   shareOverlay.classList.add('open');
   shareOverlay.setAttribute('aria-hidden', 'false');
   sharePreview.scrollTop = 0;
@@ -6649,20 +6653,19 @@ shareDownload.addEventListener('click', async () => {
       shareDownload.textContent = `生成中… ${i + 1}/${total}`;
       const canvas = await capturePosterCanvas(posters[i]);
       const url = canvas.toDataURL('image/png');
-      if (isTouch) {
-        urls.push(url);
-      } else {
-        const a = document.createElement('a');
-        a.download = '爆米花_蒙氏家长卡_' + currentPosterName + (total > 1 ? `_${i + 1}of${total}` : '') + '.png';
-        a.href = url;
-        a.click();
-        await new Promise(r => setTimeout(r, 400));
-      }
+      const a = document.createElement('a');
+      a.download = '爆米花_蒙氏家长卡_' + currentPosterName + (total > 1 ? `_${i + 1}of${total}` : '') + '.png';
+      a.href = url;
+      a.click();
+      await new Promise(r => setTimeout(r, 400));
+      if (isTouch) urls.push(url);
     }
     if (isTouch && urls.length) {
+      // 手机端：自动下载已逐张触发（Android Chrome / iOS Safari 支持）；
+      // 同时铺出成品图作兜底——微信内置浏览器等不支持自动下载的环境可长按保存
       sharePreview.innerHTML = urls.map((u, i) => `<img src="${u}" alt="卡片 ${i + 1}" style="width:100%;max-width:340px;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,0.12);">`).join('');
       shareDownload.disabled = false;
-      shareDownload.textContent = '✅ 已生成 · 长按上方图片保存';
+      shareDownload.textContent = '✅ 已下载 · 未成功则长按图片保存';
       return;
     }
   } catch (err) {
@@ -6712,9 +6715,10 @@ if (shareNative) shareNative.addEventListener('click', async () => {
       }
       nativeCache = { key: currentPosterName, files };
       shareNative.disabled = false;
-      shareNative.textContent = '📤 直接分享';
+      shareNative.textContent = files.length > 1 ? `📤 直接分享 ${files.length} 张` : '📤 直接分享';
     }
-    await navigator.share({ files: nativeCache.files, title: '爆米花 · 蒙氏家长卡' });
+    // 注意：不能附带 title/text —— 微信等接收方会优先取文字而丢弃图片
+    await navigator.share({ files: nativeCache.files });
   } catch (err) {
     shareNative.disabled = false;
     if (err && err.name === 'AbortError') { shareNative.textContent = '📤 直接分享'; return; } // 用户取消分享面板
